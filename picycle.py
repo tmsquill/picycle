@@ -1,6 +1,8 @@
 import click
+import gpsd
 import gpxpy
 
+from sense_hat import SenseHat
 from tabulate import tabulate
 
 def load_gpx_file(gpx_file):
@@ -103,6 +105,13 @@ def info_routes(gpx_file):
     click.echo(tabulate(table, headers=["Latitude", "Longitude", "Elevation"], tablefmt="presto"))
 
 @cli.command()
+def gps():
+
+    gpsd.connect()
+    packet = gpsd.get_current()
+    print(packet.position())
+
+@cli.command()
 def _():
 
     # This will end up being the primary entry-point for the program when on
@@ -136,4 +145,6 @@ def _():
     # great software engineering skills to catch exceptions and recover are a
     # must.
 
-    pass
+    sense = SenseHat()
+
+    sense.show_message("Picycle")
