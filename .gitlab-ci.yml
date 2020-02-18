@@ -7,14 +7,14 @@ before_script:
   - pip3 install --editable .
 
 test_gps:
-  stage: test
+  stage: Test
   script:
     - picycle gps
   tags:
     - stormbluff-isle 
 
 test_picycle:
-  stage: test
+  stage: Test
   script:
     - picycle -
   tags:
