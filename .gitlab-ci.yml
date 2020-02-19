@@ -6,6 +6,7 @@ before_script:
   - pip3 --version
   - pip3 install --editable .
 
+# Test that the GPS device is ready.
 test_gps:
   stage: Test
   script:
