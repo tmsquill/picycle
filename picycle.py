@@ -13,8 +13,23 @@ CREATE TABLE IF NOT EXISTS picycle (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   latitude FLOAT,
   longitude FLOAT,
-  altitude FLOAT
+  altitude FLOAT,
+  speed FLOAT,
+  track FLOAT,
+  climb FLOAT,
+  timestamp TIMESTAMP
 );
+"""
+
+SQLITE_DROP_TABLE = """
+DROP TABLE IF EXISTS picycle;
+"""
+
+SQLITE_INSERT= """
+INSERT INTO
+  picycle (latitude, longitude, altitude, speed, track, climb, timestamp)
+VALUES
+  (?, ?, ?, ?, ?, ?, ?);
 """
 
 SENSE_HAT_ERROR = [255, 0, 0]
@@ -28,7 +43,11 @@ def create_connection(path):
 
     try:
 
-        connection = sqlite3.connect(path)
+        connection = sqlite3.connect(
+            path,
+            detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES
+        )
+
         click.echo("Connection to SQLite database successful.")
 
     except sqlite3.Error as e:
@@ -37,13 +56,20 @@ def create_connection(path):
 
     return connection
 
-def execute_query(connection, query):
+def execute_query(connection, query, data=None):
 
     cursor = connection.cursor()
 
     try:
 
-        cursor.execute(query)
+        if data:
+
+            cursor.execute(query, data)
+
+        else:
+
+            cursor.execute(query)
+
         connection.commit()
         click.echo("Query execution successful.")
 
@@ -173,29 +199,50 @@ def info_routes(gpx_file):
     click.echo(tabulate(table, headers=["Latitude", "Longitude", "Elevation"], tablefmt="presto"))
 
 @cli.command()
+@click.option("--purge/--no-purge", default=False)
 @click.option("--show/--no-show", default=False)
-def database(show):
+def database(purge, show):
 
     # Connect to the SQLite database.
-    connection = create_connection("picycle.sqlite")
+    with create_connection("picycle.sqlite") as connection:
 
-    # If the connection is successful, then enter the control loop.
-    if connection:
+        # If the connection is successful, then enter the control loop.
+        if connection:
 
-        # Show the contents of the table.
-        if show:
+            # Option show selected, show the contents of the database.
+            if show:
 
-            select_picycle = "SELECT * from picycle"
-            picycle = execute_read_query(connection, select_picycle)
+                select_picycle = "SELECT * from picycle"
+                picycle = execute_read_query(connection, select_picycle)
 
-            for packet in picycle:
+                if picycle:
 
-                print(packet)
+                    table = []
 
-    # Otherwise report the error and exit.
-    else:
+                    for packet in picycle:
 
-        sys.exit(1)
+                        table.append(list(packet))
+
+                    click.echo(tabulate(
+                        table,
+                        headers=["ID", "Latitude", "Longitude", "Altitude", "Speed", "Track", "Climb", "Timestamp"],
+                        tablefmt="presto"
+                    ))
+
+                else:
+
+                    click.echo("Database is empty, no content to show.")
+
+            # Option purge selected, purge the contents of the database.
+            if purge:
+
+                execute_query(connection, SQLITE_DROP_TABLE)
+                execute_query(connection, SQLITE_CREATE_TABLE)
+
+        # Otherwise report the error and exit.
+        else:
+
+            sys.exit(1)
 
 @cli.command()
 def record():
@@ -258,21 +305,23 @@ def record():
 
                 latitude, longitude = packet.position()
                 altitude = packet.altitude()
+                movement = packet.movement()
+                now = packet.get_time()
+                speed = movement["speed"]
+                track = movement["track"]
+                climb = movement["climb"]
 
-                click.echo(f"{latitude}, {longitude}, {altitude}")
+                click.echo(f"{latitude}, {longitude}, {altitude}, {speed}, {track}, {climb}, {now}")
 
-                insert_packet = f"""
-                INSERT INTO
-                  picycle (latitude, longitude, altitude)
-                VALUES
-                  ({latitude}, {longitude}, {altitude});
-                """
-
-                execute_query(connection, insert_packet)
+                execute_query(
+                    connection,
+                    SQLITE_INSERT,
+                    (latitude, longitude, altitude, speed, track, climb, now)
+                )
 
             except gpsd.NoFixError as e:
 
-                click.echo(f"GPS device needs at least a 2D fix to provide position information.")
+                click.echo("GPS device needs at least a 2D fix to provide position information.")
 
             time.sleep(1)
 
