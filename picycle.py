@@ -1,10 +1,12 @@
 import click
 import gpsd
 import gpxpy
+import os
 import sqlite3
 import sys
 import time
 
+from datetime import datetime
 from sense_hat import SenseHat
 from tabulate import tabulate
 
@@ -32,7 +34,7 @@ VALUES
   (?, ?, ?, ?, ?, ?, ?);
 """
 
-SENSE_HAT_ERROR = [255, 0, 0]
+SENSE_HAT_LED_ERROR = [255, 0, 0]
 
 # -----------------------------------------------------------------------------
 # Database-related functions.
@@ -107,6 +109,31 @@ def save_gpx_file(gpx, gpx_file):
     with open(gpx_file, "w+") as f:
 
         f.write(gpx.to_xml())
+
+def sqlite_to_gpx(points):
+
+    gpx = gpxpy.gpx.GPX()
+
+    # Create the GPX track.
+    gpx_track = gpxpy.gpx.GPXTrack()
+    gpx.tracks.append(gpx_track)
+
+    # Create first segment in our GPX track:
+    gpx_segment = gpxpy.gpx.GPXTrackSegment()
+    gpx_track.segments.append(gpx_segment)
+
+    # Create points:
+    for point in points:
+
+        latitude, longitude, altitude = point
+
+        gpx_segment.points.append(gpxpy.gpx.GPXTrackPoint(
+            latitude,
+            longitude,
+            elevation=altitude
+        ))
+
+    return gpx
 
 # -----------------------------------------------------------------------------
 # Picycle commands.
@@ -199,12 +226,14 @@ def info_routes(gpx_file):
     click.echo(tabulate(table, headers=["Latitude", "Longitude", "Elevation"], tablefmt="presto"))
 
 @cli.command()
+@click.argument('database', type=click.Path(exists=True))
+@click.option("--gpx/--no-gpx", default=False)
 @click.option("--purge/--no-purge", default=False)
 @click.option("--show/--no-show", default=False)
-def database(purge, show):
+def database(database, gpx, purge, show):
 
     # Connect to the SQLite database.
-    with create_connection("picycle.sqlite") as connection:
+    with create_connection(database) as connection:
 
         # If the connection is successful, then enter the control loop.
         if connection:
@@ -238,6 +267,23 @@ def database(purge, show):
 
                 execute_query(connection, SQLITE_DROP_TABLE)
                 execute_query(connection, SQLITE_CREATE_TABLE)
+
+            # Option gpx selected, convert a subset of the SQLite database to a GPX file.
+            if gpx:
+
+                select_picycle = "SELECT latitude, longitude, altitude from picycle"
+                points = execute_read_query(connection, select_picycle)
+
+                # Convert the SQLite query results to a GPX object.
+                gpx = sqlite_to_gpx(points)
+
+                # Save the GPX file to the disk.
+                gpx_file_basename = os.path.splitext(os.path.basename(database))[0]
+                gpx_file = f"{gpx_file_basename}.gpx"
+
+                save_gpx_file(gpx, gpx_file)
+
+                click.echo(f"Created GPX file at {gpx_file}")
 
         # Otherwise report the error and exit.
         else:
@@ -278,14 +324,17 @@ def record():
     # great software engineering skills to catch exceptions and recover are a
     # must.
 
+    # Get the current date and time, used for creating a new SQLite database.
+    now = datetime.now().strftime('%Y%m%d-%H-%M-%S')
+
     # Initialize the Sense HAT.
     sense = SenseHat()
 
-    # Connect to the SQLite database.
-    connection = create_connection("picycle.sqlite")
-
     # Connect to the GPS device.
     gpsd.connect()
+
+    # Connect to the SQLite database.
+    connection = create_connection(f"{now}-picycle.sqlite")
 
     # If the connection is successful, then enter the control loop.
     if connection:
@@ -325,10 +374,12 @@ def record():
 
             time.sleep(1)
 
+        connection.close()
+
     # Otherwise report the error and exit.
     else:
 
-        sense.show_letter("E", SENSE_HAT_ERROR)
+        sense.show_letter("E", SENSE_HAT_LED_ERROR)
         time.sleep(3)
         sense.clear()
         sys.exit(1)
