@@ -1,3 +1,4 @@
+import asyncio
 import click
 import gpsd
 import gpxpy
@@ -7,8 +8,65 @@ import sys
 import time
 
 from datetime import datetime
-from sense_hat import SenseHat
+from enum import Enum
+from sense_hat import SenseHat, ACTION_PRESSED
 from tabulate import tabulate
+
+O = (0, 0, 0)
+LED_MATRIX = [
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+]
+
+class PicycleState(Enum):
+
+    RUNNING = 1
+    TERMINATE = 2
+
+class SessionState(Enum):
+
+    READY = 1
+    IN_PROGRESS = 2
+
+PICYCLE_STATE = None
+SESSION_STATE = None
+
+def pushed_left(event):
+
+    global SESSION_STATE
+
+    if event.action == ACTION_PRESSED:
+
+        SESSION_STATE = SessionState.IN_PROGRESS
+
+def pushed_right(event):
+
+    global SESSION_STATE
+
+    if event.action == ACTION_PRESSED:
+
+        SESSION_STATE = SessionState.READY
+
+def pushed_down(event):
+
+    global PICYCLE_STATE
+
+    if event.action == ACTION_PRESSED:
+
+        PICYCLE_STATE = PicycleState.TERMINATE
+
+# Initialize the Sense HAT.
+SENSE = SenseHat()
+
+SENSE.stick.direction_left = pushed_left
+SENSE.stick.direction_right = pushed_right
+SENSE.stick.direction_down = pushed_down
 
 SQLITE_CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS picycle (
@@ -94,6 +152,149 @@ def execute_read_query(connection, query):
         click.echo(f"Read query execution failed: '{e}'")
 
     return result
+
+# -----------------------------------------------------------------------------
+# Core asynchronous functions.
+# -----------------------------------------------------------------------------
+async def loop_led_matrix_update():
+
+    global LED_MATRIX
+    global PICYCLE_STATE
+
+    while PICYCLE_STATE == PicycleState.RUNNING:
+
+        SENSE.set_pixels(LED_MATRIX)
+
+        await asyncio.sleep(1)
+
+    click.echo("Stopping LED matrix updates...")
+
+async def loop_track_satellites():
+
+    global LED_MATRIX
+    global PICYCLE_STATE
+
+    while PICYCLE_STATE == PicycleState.RUNNING:
+
+        for x in range(gpsd.get_current().sats):
+
+            if x % 2 == 0:
+
+                idx = 0
+
+            else:
+
+                idx = 8
+
+            idx = idx + (x // 2)
+
+            if 0 <= x <= 3:
+
+                LED_MATRIX[idx] = (255, 0, 0)
+
+            elif 3 < x < 8:
+
+                LED_MATRIX[idx] = (255, 255, 0)
+
+            elif 8 <= x <= 16:
+
+                LED_MATRIX[idx] = (0, 255, 0)
+
+        await asyncio.sleep(1)
+
+    click.echo("Stopping tracking satellites...")
+
+async def loop_record_track():
+
+    global LED_MATRIX
+    global PICYCLE_STATE
+    global SESSION_STATE
+
+    while PICYCLE_STATE == PicycleState.RUNNING:
+
+        for i in range(16, 24):
+
+            LED_MATRIX[i] = (255, 255, 255)
+
+        if SESSION_STATE != SessionState.IN_PROGRESS:
+
+            await asyncio.sleep(1)
+            continue
+
+        for i in range(16, 24):
+
+            LED_MATRIX[i] = (0, 0, 255)
+
+        # Get the current date and time, used for creating a new SQLite database.
+        now = datetime.now().strftime('%Y%m%d-%H-%M-%S')
+
+        # Connect to the SQLite database.
+        db = f"{now}-picycle.sqlite"
+        connection = create_connection(db)
+
+        click.echo(click.style(f"New recording session: {db}", fg="yellow"))
+
+        # If the connection is successful, then enter the control loop.
+        if connection:
+
+            # Create the database table.
+            execute_query(connection, SQLITE_CREATE_TABLE)
+
+            # Gather GPS data and save to the database.
+            while PICYCLE_STATE == PicycleState.RUNNING and SESSION_STATE == SessionState.IN_PROGRESS:
+
+                packet = gpsd.get_current()
+
+                # Print the connection status, color coded.
+                if packet.mode != 3:
+
+                    click.echo(click.style(
+                        f"GPS device connected to {packet.sats} satellites, mode {packet.mode}.",
+                        fg="red"
+                    ))
+
+                else:
+
+                    click.echo(click.style(
+                        f"GPS device connected to {packet.sats} satellites, mode {packet.mode}.",
+                        fg="green"
+                    ))
+
+                try:
+
+                    latitude, longitude = packet.position()
+                    altitude = packet.altitude()
+                    movement = packet.movement()
+                    now = packet.get_time()
+                    speed = movement["speed"]
+                    track = movement["track"]
+                    climb = movement["climb"]
+
+                    click.echo(f"{latitude}, {longitude}, {altitude}, {speed}, {track}, {climb}, {now}")
+
+                    execute_query(
+                        connection,
+                        SQLITE_INSERT,
+                        (latitude, longitude, altitude, speed, track, climb, now)
+                    )
+
+                except gpsd.NoFixError as e:
+
+                    click.echo("GPS device needs at least a 2D fix to provide position information.")
+
+                await asyncio.sleep(1)
+
+            connection.close()
+
+        # Otherwise report the error and exit.
+        else:
+
+            SENSE.show_letter("E", SENSE_HAT_LED_ERROR)
+            time.sleep(3)
+            SENSE.clear()
+            sys.exit(1)
+
+    click.echo("Stopping recording tracks...")
 
 # -----------------------------------------------------------------------------
 # GPX-related functions.
@@ -291,95 +492,49 @@ def database(database, gpx, purge, show):
             sys.exit(1)
 
 @cli.command()
-def record():
+@click.option("--verbose/--no-verbose", default=False)
+def record(verbose):
 
-    # This will end up being the primary entry-point for the program when on
-    # the bike. There are many actions this function should fulfill:
-    #
-    # - Initialize a database (lightweight, probably sqlite3) that will keep
-    #   track of GPS readings and other metadata during a ride. There should be
-    #   a sort of automatic naming scheme here to permit multiple databases to
-    #   exist at once; it's common to require multiple recordings throughout a
-    #   ride to construct a finalized GPX file.
-    #
-    # - Initialize the GPS sensor module and load any related libraries for
-    #   reading GPS data.
-    #
-    # - Initialize the control panel and signal to the rider when recording is
-    #   available. The primary way the control panel will relay information to
-    #   the rider is via LED lights.
-    #
-    # - Enter an infinite loop that will:
-    #
-    #   - Wait for user to start recording.
-    #   - Once recording, take GPS sensor readings every second and save the
-    #     results in the database (the exact metadata to pull from the sensor
-    #     has yet to be determined, though latitude, longitude, and elevation
-    #     are must-haves).
-    #   - Continue until the user stops recording, in which case the GPS sensor
-    #     will no longer be pulled from and the database will be saved to the
-    #     disk.
-    #
-    # Saving the database to disk frequently to avoid data-loss is a must,
-    # great software engineering skills to catch exceptions and recover are a
-    # must.
+    global PICYCLE_STATE
+    PICYCLE_STATE = PicycleState.RUNNING
 
-    # Get the current date and time, used for creating a new SQLite database.
-    now = datetime.now().strftime('%Y%m%d-%H-%M-%S')
+    global SESSION_STATE
+    SESSION_STATE = SessionState.READY
 
-    # Initialize the Sense HAT.
-    sense = SenseHat()
+    SENSE.show_message("Picycle")
+
+    # Execute the core loop.
+    click.echo("Picycle core loop started...")
 
     # Connect to the GPS device.
     gpsd.connect()
 
-    # Connect to the SQLite database.
-    connection = create_connection(f"{now}-picycle.sqlite")
+    # Run the session, consisting of asynchronous tasks.
+    asyncio.run(session(verbose))
 
-    # If the connection is successful, then enter the control loop.
-    if connection:
+    # Clear the SenseHAT LED matrix.
+    SENSE.clear()
 
-        sense.show_message("Picycle")
+async def session(verbose=False):
 
-        # Create the database table.
-        execute_query(connection, SQLITE_CREATE_TABLE)
+    if verbose:
 
-        # Gather GPS data and save to the database.
-        while True:
+        click.echo("Picycle session has started...")
 
-            packet = gpsd.get_current()
-            click.echo(f"GPS device connected to {packet.sats} satellites, mode {packet.mode}.")
+    # Create an asynchronous task for recording a track.
+    task_1 = asyncio.create_task(loop_record_track())
 
-            try:
+    # Create an asynchronous task for tracking satellites.
+    task_2 = asyncio.create_task(loop_track_satellites())
 
-                latitude, longitude = packet.position()
-                altitude = packet.altitude()
-                movement = packet.movement()
-                now = packet.get_time()
-                speed = movement["speed"]
-                track = movement["track"]
-                climb = movement["climb"]
+    # Create an asynchronous task for updating the LED matrix.
+    task_3 = asyncio.create_task(loop_led_matrix_update())
 
-                click.echo(f"{latitude}, {longitude}, {altitude}, {speed}, {track}, {climb}, {now}")
+    # Await for the tasks to complete, then exit.
+    await task_1
+    await task_2
+    await task_3
 
-                execute_query(
-                    connection,
-                    SQLITE_INSERT,
-                    (latitude, longitude, altitude, speed, track, climb, now)
-                )
+    if verbose:
 
-            except gpsd.NoFixError as e:
-
-                click.echo("GPS device needs at least a 2D fix to provide position information.")
-
-            time.sleep(1)
-
-        connection.close()
-
-    # Otherwise report the error and exit.
-    else:
-
-        sense.show_letter("E", SENSE_HAT_LED_ERROR)
-        time.sleep(3)
-        sense.clear()
-        sys.exit(1)
+        click.echo("Picycle session has ended...")

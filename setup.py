@@ -6,6 +6,7 @@ setup(
     py_modules=["picycle"],
     install_requires=[
         "Click",
+        "colorama",
         "gpxpy",
         "tabulate"
     ],
