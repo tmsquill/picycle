@@ -12,18 +12,6 @@ from enum import Enum
 from sense_hat import SenseHat, ACTION_PRESSED
 from tabulate import tabulate
 
-O = (0, 0, 0)
-LED_MATRIX = [
-    O, O, O, O, O, O, O, O,
-    O, O, O, O, O, O, O, O,
-    O, O, O, O, O, O, O, O,
-    O, O, O, O, O, O, O, O,
-    O, O, O, O, O, O, O, O,
-    O, O, O, O, O, O, O, O,
-    O, O, O, O, O, O, O, O,
-    O, O, O, O, O, O, O, O,
-]
-
 class PicycleState(Enum):
 
     RUNNING = 1
@@ -34,9 +22,12 @@ class SessionState(Enum):
     READY = 1
     IN_PROGRESS = 2
 
-PICYCLE_STATE = None
-SESSION_STATE = None
+PICYCLE_STATE = PicycleState.RUNNING
+SESSION_STATE = SessionState.READY
 
+# -----------------------------------------------------------------------------
+# SenseHAT Joystick Events
+# -----------------------------------------------------------------------------
 def pushed_left(event):
 
     global SESSION_STATE
@@ -68,6 +59,18 @@ SENSE.stick.direction_left = pushed_left
 SENSE.stick.direction_right = pushed_right
 SENSE.stick.direction_down = pushed_down
 
+O = (0, 0, 0)
+LED_MATRIX = [
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+    O, O, O, O, O, O, O, O,
+]
+
 SQLITE_CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS picycle (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,8 +94,6 @@ INSERT INTO
 VALUES
   (?, ?, ?, ?, ?, ?, ?);
 """
-
-SENSE_HAT_LED_ERROR = [255, 0, 0]
 
 # -----------------------------------------------------------------------------
 # Database-related functions.
@@ -289,7 +290,7 @@ async def loop_record_track():
         # Otherwise report the error and exit.
         else:
 
-            SENSE.show_letter("E", SENSE_HAT_LED_ERROR)
+            SENSE.show_letter("E", (255, 0, 0))
             time.sleep(3)
             SENSE.clear()
             sys.exit(1)
@@ -495,16 +496,7 @@ def database(database, gpx, purge, show):
 @click.option("--verbose/--no-verbose", default=False)
 def record(verbose):
 
-    global PICYCLE_STATE
-    PICYCLE_STATE = PicycleState.RUNNING
-
-    global SESSION_STATE
-    SESSION_STATE = SessionState.READY
-
     SENSE.show_message("Picycle")
-
-    # Execute the core loop.
-    click.echo("Picycle core loop started...")
 
     # Connect to the GPS device.
     gpsd.connect()
