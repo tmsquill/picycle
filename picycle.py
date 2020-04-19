@@ -3,6 +3,7 @@ import click
 import gpsd
 import gpxpy
 import os
+import signal
 import sqlite3
 import sys
 import time
@@ -12,6 +13,9 @@ from enum import Enum
 from sense_hat import SenseHat, ACTION_PRESSED
 from tabulate import tabulate
 
+# -----------------------------------------------------------------------------
+# Represents Global State
+# -----------------------------------------------------------------------------
 class PicycleState(Enum):
 
     RUNNING = 1
@@ -211,6 +215,16 @@ async def loop_record_track():
     global PICYCLE_STATE
     global SESSION_STATE
 
+    # When run as a service, it's common to encounter SIGTERM. This is needed
+    # to clear
+    def sigterm_handler(signum, stack_frame):
+
+        global PICYCLE_STATE
+
+        PICYCLE_STATE = PicycleState.TERMINATE
+
+    signal.signal(signal.SIGTERM, sigterm_handler)
+
     while PICYCLE_STATE == PicycleState.RUNNING:
 
         for i in range(16, 24):
@@ -296,6 +310,7 @@ async def loop_record_track():
             sys.exit(1)
 
     click.echo("Stopping recording tracks...")
+    SENSE.clear()
 
 # -----------------------------------------------------------------------------
 # GPX-related functions.

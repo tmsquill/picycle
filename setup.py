@@ -8,7 +8,7 @@ setup(
     author="Troy Squillaci",
     author_email="troysquillaci@gmail.com",
     url="https://github.com/tmsquill/picycle",
-    keywords=["raspberry pi", "sense hat", "gps", "sqlite", "bike"]
+    keywords=["raspberry pi", "sense hat", "gps", "sqlite", "bike"],
     py_modules=["picycle"],
     install_requires=[
         "Click",
