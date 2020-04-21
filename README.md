@@ -14,7 +14,7 @@ The Sense HAT input (joystick) and output (LED matrix) enable users to interact 
 
 ## Reviewing & Manipulating Recordings
 
-All other sub-commands are meant to executed in some interactive environment (i.e. SSH, local terminal, etc...). These commands perform various actions; examples include pretty-printing recordings, stitching recording together, and exporting recordings to GPX format.
+All other sub-commands are meant to be executed in some interactive environment (i.e. SSH, local terminal, etc...). These commands perform various actions; examples include pretty-printing recordings, stitching recording together, and exporting recordings to GPX format.
 
 ```bash
 $ picycle --help
