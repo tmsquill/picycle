@@ -1,7 +1,25 @@
 # Picycle
 
-What happens when you take a bicycle and attach a Raspberry Pi to it? A picycle! It's a POC that utilizes a few off-the-shelf sensors along with some nifty 3D-printed mounts to enable the creation of GPX files while riding. GPX files are a common format used by many applications to represent tracks, routes, and waypoints gather through GPS.
+What happens when you take a bicycle and attach a Raspberry Pi to it? A picycle! It's a POC that utilizes a [Sense HAT](https://www.raspberrypi.org/blog/sense-hat-projects/) and a GPS module to record location and weather data (similar to [Strava](https://www.strava.com/)) on rides. 
 
-Q: There are many apps available on smartphones that do this better, so why picycle?
+Picycle is a CLI tool and is commonly used in two different ways.
 
-A: First and foremost, it's a fun POC. Don't expect picycle to provide better accuracy or features over it's smartphone competitors. Better user-controls while riding is the _only_ notable advantage.
+## Recording While Riding
+
+Recording location and weather data while riding is done through the `record` sub-command. Obviously the rider won't have a keyboard and screen during a ride, so this command is typically started as a system service (i.e. through [systemd](https://systemd.io/)).
+
+The Sense HAT input (joystick) and output (LED matrix) enable users to interact with picycle in this so-called headless environment.
+
+## Reviewing & Manipulating Recordings
+
+All other sub-commands are meant to executed in some interactive environment (i.e. SSH, local terminal, etc...). These commands perform various actions; examples include pretty-printing recordings, stitching recording together, and exporting recordings to GPX format.
+
+## Installation
+
+Picycle requires a Python 3 interpreter and utilizes [click](https://click.palletsprojects.com/). Installing locally through `pip` is recommended.
+
+```bash
+git clone git@github.com:tmsquill/picycle.git
+cd picycle
+pip install .
+```
