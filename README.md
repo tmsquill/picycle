@@ -1,6 +1,8 @@
 # Picycle
 
-What happens when you take a bicycle and attach a Raspberry Pi to it? A picycle! It's a POC that utilizes a [Sense HAT](https://www.raspberrypi.org/blog/sense-hat-projects/) and a GPS module to record location and weather data (similar to [Strava](https://www.strava.com/)) on rides. 
+What happens when you take a bicycle and attach a Raspberry Pi to it? A picycle! It's a POC that utilizes a [Sense HAT](https://www.raspberrypi.org/blog/sense-hat-projects/) and a GPS module to record location and weather data (similar to [Strava](https://www.strava.com/)) on rides.
+
+![Imgur](https://i.imgur.com/blBGR2f.jpg)
 
 Picycle is a CLI tool and is commonly used in two different ways.
 
@@ -13,6 +15,22 @@ The Sense HAT input (joystick) and output (LED matrix) enable users to interact 
 ## Reviewing & Manipulating Recordings
 
 All other sub-commands are meant to executed in some interactive environment (i.e. SSH, local terminal, etc...). These commands perform various actions; examples include pretty-printing recordings, stitching recording together, and exporting recordings to GPX format.
+
+```bash
+$ picycle --help
+Usage: picycle [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  database
+  info-gpx
+  info-routes
+  info-tracks
+  info-waypoints
+  record
+```
 
 ## Installation
 
