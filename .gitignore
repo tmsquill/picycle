@@ -1,6 +1,7 @@
 .python-version
 __pycache__/
 picycle.egg-info/
+*.DS_Store
 *.gpx
 *.pyc
 *.sqlite
