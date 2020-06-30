@@ -6,6 +6,12 @@ authors = ["Troy Squillaci <troysquillaci@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.6"
+Click = "^7.1.2"
+colorama = "^0.4.3"
+gpxpy = "^1.4.2"
+gpsd-py3 = "^0.3.0"
+tabulate = "^0.8.7"
+sense_hat = "^2.2.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
