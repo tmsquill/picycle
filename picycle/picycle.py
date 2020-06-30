@@ -10,8 +10,20 @@ import time
 
 from datetime import datetime
 from enum import Enum
-from sense_hat import SenseHat, ACTION_PRESSED
 from tabulate import tabulate
+
+# -----------------------------------------------------------------------------
+# Handle situation where user attempts to run Picycle on something other than
+# a Raspberry Pi.
+# -----------------------------------------------------------------------------
+try:
+
+    from sense_hat import SenseHat, ACTION_PRESSED
+
+except ModuleNotFoundError:
+
+    print("Picycle must be run on a Raspberry Pi.")
+    sys.exit()
 
 # -----------------------------------------------------------------------------
 # Represents Global State
